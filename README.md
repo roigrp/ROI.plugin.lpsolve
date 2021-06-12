@@ -1,2 +1,7 @@
 # ROI.plugin.lpsolve
-lp_solve Plugin for the R Optimization Infrastructure
+
+# Installation from Github
+
+```r
+remotes:::install_github("roigrp/ROI.plugin.lpsolve")
+```
