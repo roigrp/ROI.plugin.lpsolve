@@ -115,7 +115,7 @@ solve_OP <- function(x, control = list()) {
             irow <- constraints(x)[['L']][i,]
             set.row(om, i, irow$v, irow$j)
         }
-    }else {
+    }else{
         for (k in seq_len(nc)) {
             kcol <- constraints(x)[['L']][,k]
             set.column(om, k,kcol$v, kcol$i)
@@ -142,9 +142,11 @@ solve_OP <- function(x, control = list()) {
 
     ## maximum
     control$sense <- if (x$maximum) "max" else "min"
-
-    # set.objfn(om, terms(objective(x))[['L']]$v)
-    set.objfn(om, terms(objective(x))[['L']]$v,  terms(objective(x))[['L']]$j)
+    if(length(terms(objective(x))[['L']]$j == nc)){
+        set.objfn(om, terms(objective(x))[['L']]$v)
+    }else{
+        set.objfn(om, terms(objective(x))[['L']]$v,  terms(objective(x))[['L']]$j)
+    }
     ## control options
     ## - basis 
     ##     list(basis = c(1, 2, 3), nonbasic = TRUE, default = TRUE)
