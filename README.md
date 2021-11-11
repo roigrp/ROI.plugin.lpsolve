@@ -6,4 +6,5 @@ Patched version of ROI.lpsolve, improves performance when there are more constra
 
 ```r
 remotes:::install_github("roigrp/ROI.plugin.lpsolve")
+remotes:::install_github("marcishak/ROI.plugin.lpsolve")
 ```
