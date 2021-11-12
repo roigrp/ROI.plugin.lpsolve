@@ -77,8 +77,29 @@ is.all_integer <- function(types) {
     all(types %in% c("B", "I"))
 }
 
+
+# NOTE: 
+#   We used here get.variables but we got reports that when using presolve this
+#   can result in getting more variables than the original problem has.
+#   This should be resolved by using get.primal.solution with setting orig
+#   to TRUE.
+get_primal_solution <- function(lprec, n_of_variables) {
+    # get.variables(lprec)
+    primal_solution <- get.primal.solution(lprec, orig = TRUE)
+    if (is.null(primal_solution)) {
+        primal_solution <- get.variables(lprec)
+    } else {
+        # get.primal.solution gives the lhs of the evaluated constraints
+        # and the primal solution, therfore the length is n_of_constraints + n_of_variables.
+        primal_solution <- tail(primal_solution, n_of_variables)
+    }
+    primal_solution
+}
+
+
 solve_OP <- function(x, control = list()) {
     solver <- "lpsolve"
+    use_presolve <- "presolve" %in% names(control)
 
     nr <- length(constraints(x))
     nc <- length(objective(x))
@@ -87,16 +108,23 @@ solve_OP <- function(x, control = list()) {
     om <- make.lp(nr, nc, verbose = control$verbose)
 
     ## objective
-    set.objfn(om, terms(objective(x))[['L']]$v, terms(objective(x))[['L']]$j)
-    
+    # mat <- as.matrix(constraints(x)[['L']])
     ## constraints
-    for (i in seq_len(nr)) {
-        irow <- constraints(x)[['L']][i,]
-        set.row(om, i, irow$v, irow$j)
+    if(nr < nc){
+        for (i in seq_len(nr)) {
+            irow <- constraints(x)[['L']][i,]
+            set.row(om, i, irow$v, irow$j)
+        }
+    }else{
+        for (k in seq_len(nc)) {
+            kcol <- constraints(x)[['L']][,k]
+            set.column(om, k,kcol$v, kcol$i)
+        }
     }
     set.rhs(om, constraints(x)[['rhs']], seq_len(nr))
     set.constr.type(om, map_dir(constraints(x)[['dir']]), seq_len(nr))
 
+    # set.objfn(om, terms(objective(x))[['L']]$v, terms(objective(x))[['L']]$j)
     ## bounds (lp_solve has the lower bound default by zero)
     if ( !is.null(bounds(x)) ) {
         bo <- build_bounds(bounds(x))
@@ -114,7 +142,11 @@ solve_OP <- function(x, control = list()) {
 
     ## maximum
     control$sense <- if (x$maximum) "max" else "min"
-
+    if(length(terms(objective(x))[['L']]$j == nc)){
+        set.objfn(om, terms(objective(x))[['L']]$v)
+    }else{
+        set.objfn(om, terms(objective(x))[['L']]$v,  terms(objective(x))[['L']]$j)
+    }
     ## control options
     ## - basis 
     ##     list(basis = c(1, 2, 3), nonbasic = TRUE, default = TRUE)
@@ -166,7 +198,7 @@ solve_OP <- function(x, control = list()) {
             sol$dual_solutions <- vector("list", sol$solution_count)
             for ( i in seq_len(sol$solution_count) ) {
                 select.solution(om, i)
-                sol$solutions[[i]] <- get.variables(om)
+                sol$solutions[[i]] <- get_primal_solution(om, n_of_variables = nc)
                 sol$dual_solutions[[i]] <- get.dual.solution(om)
             }
         
@@ -194,11 +226,11 @@ solve_OP <- function(x, control = list()) {
     }
 }
 
-lp_solve <- function(om) {
+lp_solve <- function(om, n_of_variables) {
     status <- solve(om)
     x <- vector("list", 5)
     names(x) <- c("solution", "optimum", "status", "solver", "message")
-    x[["solution"]] <- get.variables(om)
+    x[["solution"]] <- get_primal_solution(om, n_of_variables)
     x[["optimum"]] <- get.objective(om)
     x[["status"]] <- status
     x[["solver"]] <- "lpsolve"
@@ -215,13 +247,14 @@ objective_value <- function(obj_fun, solution) {
 
 ## nsol <- control$nsol
 .find_up_to_n_binary_MILP_solutions <- function(om, x, nsol, tolerance = 1e-4) {
+    n_of_variables <- length(objective(x))
     k <- which(types(x) == "B")
     if ( length(k) == 0 ) {
         stop("no 'binary' variables found")
     }
 
     solutions <- vector("list", nsol)
-    solutions[[1L]] <- lp_solve(om)
+    solutions[[1L]] <- lp_solve(om, n_of_variables)
     if ( solutions[[1L]]$status$code != 0 ) {
         return(solutions[1L])
     }
@@ -237,7 +270,7 @@ objective_value <- function(obj_fun, solution) {
         ak[sol == 0] <- -1
         add.constraint(om, xt = ak, type = "<=", rhs = rhs, indices = k)
 
-        sobj <- lp_solve(om)
+        sobj <- lp_solve(om, n_of_variables)
         if ( sobj$status$code != 0 ) {
             return(solutions)
         }
@@ -317,4 +350,18 @@ read.lp <- function(file, type=c("lp", "mps", "freemps")) {
             types = ty, bounds = bo, maximum = is_maxi)
     x
 }
+
+
+library(lpSolveAPI)
+
+lps.model <- make.lp(0, 3)
+# xt <- c(6,2,4)
+# add.constraint(lps.model, xt, "<=", 150)
+# xt <- c(1,1,6)
+# add.constraint(lps.model, xt, ">=", 0)
+# xt <- c(4,5,4)
+# add.constraint(lps.model, xt, "=", 40)
+set.objfn(lps.model, c(-3,-4,-3))
+
+solve(lps.model)
 
